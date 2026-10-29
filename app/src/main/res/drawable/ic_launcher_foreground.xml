@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Orbital Celestial Ring -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#80FFFFFF"
+        android:strokeWidth="3"
+        android:pathData="M 54, 25 A 29 29 0 1 0 54 83 A 29 29 0 1 0 54 25 Z" />
+
+    <!-- Center Hourglass Silhouette (Chronometry) -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M38,32 L70,32 C70,32 70,36 66,40 L58,48 L58,52 L66,60 C70,64 70,68 70,68 L38,68 C38,68 38,64 42,60 L50,52 L50,48 L42,40 C38,36 38,32 38,32 Z M44,36 C46,40 50,44 54,48 C58,44 62,40 64,36 L44,36 Z" />
+
+    <!-- Flowing golden sand / star marker -->
+    <path
+        android:fillColor="#FFFFB703"
+        android:pathData="M54,58 L57,63 L51,63 Z" />
+</vector>

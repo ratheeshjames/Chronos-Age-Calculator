@@ -1,0 +1,6 @@
+{
+  "name": "Chronos Age Calculator",
+  "description": "Precision age calculator, milestone countdowns, planetary chronometry, life stats, and time analytics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
