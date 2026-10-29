@@ -1,0 +1,128 @@
+name: Android CI/CD — Build & Release APK
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Optional tag name for manual release (e.g. v1.0.0)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build Chronos APK & Publish Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 17 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Grant Execute Permission for Gradlew
+        run: |
+          if [ -f "./gradlew" ]; then
+            chmod +x ./gradlew
+          fi
+
+      - name: Configure Keystore (Release or Automatic Debug Fallback)
+        id: keystore_setup
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ] && [ -n "$KEYSTORE_PASSWORD" ] && [ -n "$KEY_PASSWORD" ]; then
+            echo "Release signing secrets detected. Decoding release keystore..."
+            echo "$KEYSTORE_BASE64" | base64 --decode > "${GITHUB_WORKSPACE}/my-upload-key.jks"
+            echo "KEYSTORE_PATH=${GITHUB_WORKSPACE}/my-upload-key.jks" >> $GITHUB_ENV
+            echo "STORE_PASSWORD=${KEYSTORE_PASSWORD}" >> $GITHUB_ENV
+            echo "KEY_PASSWORD=${KEY_PASSWORD}" >> $GITHUB_ENV
+            echo "BUILD_TASK=assembleRelease" >> $GITHUB_ENV
+            echo "APK_SEARCH_PATH=app/build/outputs/apk/release/*.apk" >> $GITHUB_ENV
+            echo "build_variant=release" >> $GITHUB_OUTPUT
+          else
+            echo "Release signing secrets not configured. Falling back to debug keystore..."
+            if [ ! -f "${GITHUB_WORKSPACE}/debug.keystore" ]; then
+              keytool -genkey -v \
+                -keystore "${GITHUB_WORKSPACE}/debug.keystore" \
+                -storepass android \
+                -alias androiddebugkey \
+                -keypass android \
+                -keyalg RSA \
+                -keysize 2048 \
+                -validity 10000 \
+                -dname "CN=Android Debug,O=Android,C=US"
+            fi
+            echo "BUILD_TASK=assembleDebug" >> $GITHUB_ENV
+            echo "APK_SEARCH_PATH=app/build/outputs/apk/debug/*.apk" >> $GITHUB_ENV
+            echo "build_variant=debug" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build Standalone APK
+        run: |
+          if [ -f "./gradlew" ]; then
+            ./gradlew ${{ env.BUILD_TASK }} --stacktrace
+          else
+            gradle ${{ env.BUILD_TASK }} --stacktrace
+          fi
+
+      - name: Prepare & Rename APK Artifact and Compute Checksums
+        id: package_apk
+        run: |
+          APK_FILE=$(ls ${{ env.APK_SEARCH_PATH }} | head -n 1)
+          VERSION_TAG="${GITHUB_REF_NAME:-v1.0.0}"
+          VARIANT="${{ steps.keystore_setup.outputs.build_variant }}"
+          TARGET_APK="Chronos-Age-Calculator-${VERSION_TAG}-${VARIANT}.apk"
+          cp "$APK_FILE" "$TARGET_APK"
+
+          MD5_HASH=$(md5sum "$TARGET_APK" | awk '{ print $1 }')
+          SHA256_HASH=$(sha256sum "$TARGET_APK" | awk '{ print $1 }')
+
+          echo "apk_path=${TARGET_APK}" >> $GITHUB_OUTPUT
+          echo "md5=${MD5_HASH}" >> $GITHUB_OUTPUT
+          echo "sha256=${SHA256_HASH}" >> $GITHUB_OUTPUT
+
+          echo "Compiled APK: $TARGET_APK"
+          echo "MD5: $MD5_HASH"
+          echo "SHA-256: $SHA256_HASH"
+
+      - name: Upload APK Build Artifact (CI Run)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package_apk.outputs.apk_path }}
+          path: ${{ steps.package_apk.outputs.apk_path }}
+          if-no-files-found: error
+
+      - name: Publish Automated GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag != '')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.release_tag != '' && github.event.inputs.release_tag || github.ref_name }}
+          name: "Chronos Age Calculator ${{ github.event.inputs.release_tag != '' && github.event.inputs.release_tag || github.ref_name }}"
+          body_path: RELEASE_NOTES.md
+          files: ${{ steps.package_apk.outputs.apk_path }}
+          draft: false
+          prerelease: false
+          generate_release_notes: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
